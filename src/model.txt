@@ -4,3 +4,10 @@ GET core backup diff $host,$backup1,$backup2
 GET core backup download $host,$backup=null
 GET core backup providers
 GET core backup revertBackup $backup
+
+GET core dashboard getDashboard
+GET core dashboard picture
+GET core dashboard productInfoFeed
+POST core dashboard restoreDefaults
+POST core dashboard saveWidgets
+

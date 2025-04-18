@@ -6,6 +6,7 @@ use nom::{
     IResult, Parser,
 };
 
+#[derive(Clone, Debug)]
 pub struct Api {
     pub method: String,
     pub module: String,
