@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 nom = "8.0"
+rust-ini = "0.21"
