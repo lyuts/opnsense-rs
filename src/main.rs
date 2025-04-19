@@ -1,31 +1,57 @@
 mod model;
 
-use std::collections::HashMap;
-
-use anyhow::anyhow;
 use anyhow::Context;
-use clap::arg;
 use clap::Arg;
 use clap::ArgAction;
 use clap::Command;
-use clap::{Args, Parser as ClapParser, Subcommand};
 use model::{get_apis, Api};
-use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashMap;
+
+fn call(
+    endpoint: &str,
+    api: &Api,
+    params: Vec<String>,
+    insecure: bool,
+    key: &str,
+    secret: &str,
+) -> anyhow::Result<()> {
+    let method = reqwest::Method::from_bytes(api.method.to_uppercase().as_bytes())?;
+    let mut url = format!(
+        "{}/api/{}/{}/{}",
+        endpoint, api.module, api.controller, api.command
+    );
+
+    for p in params {
+        url.push_str(&format!("/{}", p));
+    }
+
+    println!("url: {}", url);
+    let resp = reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(insecure)
+        .build()?
+        .request(method, url)
+        .basic_auth(key, Some(secret))
+        // .json(&json!({}))
+        .send()?
+        .text()?;
+
+    println!("==>>> {:?}", resp);
+    Ok(())
+}
 
 fn main() -> anyhow::Result<()> {
-    let _apis: Vec<Api> = get_apis()?;
-
     let conf = ini::Ini::load_from_file(".opn.ini")?;
-    let profile_data = conf
-        .section(Some("default"))
-        .ok_or(anyhow!("Profile not found."))?;
+    let profile_data = conf.section(Some("default")).context("Profile not found")?;
+    let endpoint = profile_data
+        .get("endpoint")
+        .context("endpoint is missing in the profile.")?;
     let key = profile_data
         .get("key")
-        .ok_or(anyhow!("key is missing in the profile."))?;
+        .context("key is missing in the profile.")?;
     let secret = profile_data
         .get("secret")
-        .ok_or(anyhow!("secret is missing in the profile."))?;
+        .context("secret is missing in the profile.")?;
 
     let apis: Vec<Api> = get_apis()?;
 
@@ -43,9 +69,15 @@ fn main() -> anyhow::Result<()> {
             x.insert(api.module.clone(), HashMap::new());
         }
         if !x.get(&api.module).unwrap().contains_key(&api.controller) {
-            x.get_mut(&api.module).unwrap().insert(api.controller.clone(), Vec::new());
+            x.get_mut(&api.module)
+                .unwrap()
+                .insert(api.controller.clone(), Vec::new());
         }
-        x.get_mut(&api.module).unwrap().get_mut(&api.controller).unwrap().push(api.clone());
+        x.get_mut(&api.module)
+            .unwrap()
+            .get_mut(&api.controller)
+            .unwrap()
+            .push(api.clone());
     }
 
     for (module_name, controller_cmds) in x.iter() {
@@ -67,6 +99,45 @@ fn main() -> anyhow::Result<()> {
     let matches = args.get_matches();
     let insecure = *matches.get_one::<bool>("insecure").unwrap_or(&false);
 
-    println!("{:?}", matches.subcommand().unwrap());
+    let (module_name, module_cmd) = matches.subcommand().context("Must specify module.")?;
+    println!("Selected module: {}", module_name);
+    let (controller_name, controller_cmd) =
+        module_cmd.subcommand().context("Must specify controller")?;
+    println!("Selected controller: {}", controller_name);
+    let (command_name, command_cmd) = controller_cmd
+        .subcommand()
+        .context("Must specify command")?;
+    println!("Selected command: {}", command_name);
+
+    let selected_api = apis
+        .iter()
+        .find(|a| {
+            a.module == module_name && a.controller == controller_name && a.command == command_name
+        })
+        .context("Unrecognized API.")?;
+
+    let ordered_params: Vec<String> = selected_api
+        .parameters
+        .iter()
+        .map(|param_name| {
+            command_cmd
+                .get_one::<String>(param_name)
+                .unwrap_or(&String::new())
+                .to_owned()
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    println!("Selected command args: {:?}", ordered_params);
+
+    call(
+        endpoint,
+        selected_api,
+        ordered_params,
+        insecure,
+        key,
+        secret,
+    )?;
+
     Ok(())
 }
