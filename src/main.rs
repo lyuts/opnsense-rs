@@ -1,11 +1,54 @@
 mod model;
 
+use anyhow::bail;
+use anyhow::ensure;
 use anyhow::Context;
 use clap::Arg;
 use clap::ArgAction;
 use clap::Command;
 use model::{get_apis, Api};
+use serde::Deserialize;
 use std::collections::HashMap;
+
+const CONFIG_FILE: &str = ".opn.cfg";
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AddApiKeyResponse {
+    Success {
+        result: String,
+        hostname: String,
+        key: String,
+        secret: String,
+    },
+    Failure {
+        status: u16,
+        message: String,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SearchApiKeyResponse {
+    #[serde(rename_all = "camelCase")]
+    Success {
+        total: u16,
+        row_count: u16,
+        current: u16,
+        rows: Vec<ApiKeyRow>,
+    },
+    Failure {
+        status: u16,
+        message: String,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiKeyRow {
+    username: String,
+    key: String,
+    id: String,
+}
 
 fn call(
     endpoint: &str,
@@ -14,7 +57,7 @@ fn call(
     insecure: bool,
     key: &str,
     secret: &str,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let method = reqwest::Method::from_bytes(api.method.to_uppercase().as_bytes())?;
     let mut url = format!(
         "{}/api/{}/{}/{}",
@@ -46,11 +89,11 @@ fn call(
     };
 
     println!("==>>> {:?}", resp);
-    Ok(())
+    Ok(resp)
 }
 
 fn main() -> anyhow::Result<()> {
-    let conf = ini::Ini::load_from_file(".opn.ini")?;
+    let conf = ini::Ini::load_from_file(CONFIG_FILE)?;
     let profile_data = conf.section(Some("default")).context("Profile not found")?;
     let endpoint = profile_data
         .get("endpoint")
@@ -64,13 +107,18 @@ fn main() -> anyhow::Result<()> {
 
     let apis: Vec<Api> = get_apis()?;
 
-    let mut args = Command::new("opnsense cli").arg(
-        Arg::new("insecure")
-            .short('k')
-            .long("insecure")
-            .required(false)
-            .action(ArgAction::SetTrue),
-    );
+    let mut args = Command::new("opnsense cli")
+        .arg(
+            Arg::new("insecure")
+                .short('k')
+                .long("insecure")
+                .required(false)
+                .action(ArgAction::SetTrue),
+        )
+        .subcommand(
+            Command::new("login").about("Create API key and persist it for future commands."),
+        )
+        .subcommand(Command::new("logout").about("Destroy API key created by previous login."));
 
     let mut x: HashMap<String, HashMap<String, Vec<Api>>> = HashMap::new();
     for api in &apis {
@@ -110,43 +158,143 @@ fn main() -> anyhow::Result<()> {
 
     let (module_name, module_cmd) = matches.subcommand().context("Must specify module.")?;
     println!("Selected module: {}", module_name);
-    let (controller_name, controller_cmd) =
-        module_cmd.subcommand().context("Must specify controller")?;
-    println!("Selected controller: {}", controller_name);
-    let (command_name, command_cmd) = controller_cmd
-        .subcommand()
-        .context("Must specify command")?;
-    println!("Selected command: {}", command_name);
+    match module_name {
+        "login" => {
+            let user = rpassword::prompt_password("User:")?;
+            let pass = rpassword::prompt_password("Password:")?;
+            println!("[{}]", user);
 
-    let selected_api = apis
-        .iter()
-        .find(|a| {
-            a.module == module_name && a.controller == controller_name && a.command == command_name
-        })
-        .context("Unrecognized API.")?;
+            println!("Logging in...");
+            let response = call(
+                endpoint,
+                &Api {
+                    method: "POST".to_owned(),
+                    module: "auth".to_owned(),
+                    controller: "user".to_owned(),
+                    command: "addApiKey".to_owned(),
+                    parameters: vec!["username".to_owned()],
+                },
+                vec![user.to_owned()],
+                insecure,
+                &user,
+                &pass,
+            )?;
 
-    let ordered_params: Vec<String> = selected_api
-        .parameters
-        .iter()
-        .map(|param_name| {
-            command_cmd
-                .get_one::<String>(param_name)
-                .unwrap_or(&String::new())
-                .to_owned()
-        })
-        .filter(|s| !s.is_empty())
-        .collect();
+            println!("Checking response...");
 
-    println!("Selected command args: {:?}", ordered_params);
+            match serde_json::from_str::<AddApiKeyResponse>(&response)? {
+                AddApiKeyResponse::Success {
+                    result,
+                    hostname: _,
+                    key,
+                    secret,
+                } => {
+                    ensure!(result == "ok");
+                    let mut updated_config = conf.clone();
+                    updated_config
+                        .section_mut(Some("default"))
+                        .context("'default' section missing in config file.")?
+                        .insert("key", key);
+                    updated_config
+                        .section_mut(Some("default"))
+                        .context("'default' section missing in config file.")?
+                        .insert("secret", secret);
+                    updated_config.write_to_file(CONFIG_FILE)?;
+                }
+                AddApiKeyResponse::Failure { status, message } => bail!("[{}] {}", status, message),
+            }
+        }
+        "logout" => {
+            println!("Discovering key id...");
 
-    call(
-        endpoint,
-        selected_api,
-        ordered_params,
-        insecure,
-        key,
-        secret,
-    )?;
+            let response = call(
+                endpoint,
+                &Api {
+                    method: "GET".to_owned(),
+                    module: "auth".to_owned(),
+                    controller: "user".to_owned(),
+                    command: "searchApiKey".to_owned(),
+                    parameters: vec![],
+                },
+                vec![],
+                insecure,
+                key,
+                secret,
+            )?;
+
+            match serde_json::from_str::<SearchApiKeyResponse>(&response)
+                .context("Failed to parse")?
+            {
+                SearchApiKeyResponse::Success {
+                    total,
+                    row_count,
+                    current,
+                    rows,
+                } => {
+                    let row = rows
+                        .iter()
+                        .find(|row| row.key == key)
+                        .context("Key doesn't exist, nothing to delete.")?;
+                    call(
+                        endpoint,
+                        &Api {
+                            method: "POST".to_owned(),
+                            module: "auth".to_owned(),
+                            controller: "user".to_owned(),
+                            command: "delApiKey".to_owned(),
+                            parameters: vec!["id".to_owned()],
+                        },
+                        vec![row.id.clone()],
+                        insecure,
+                        key,
+                        secret,
+                    )?;
+                }
+                _ => unimplemented!(),
+            }
+        }
+        _ => {
+            let (controller_name, controller_cmd) =
+                module_cmd.subcommand().context("Must specify controller")?;
+            println!("Selected controller: {}", controller_name);
+            let (command_name, command_cmd) = controller_cmd
+                .subcommand()
+                .context("Must specify command")?;
+            println!("Selected command: {}", command_name);
+
+            let selected_api = apis
+                .iter()
+                .find(|a| {
+                    a.module == module_name
+                        && a.controller == controller_name
+                        && a.command == command_name
+                })
+                .context("Unrecognized API.")?;
+
+            let ordered_params: Vec<String> = selected_api
+                .parameters
+                .iter()
+                .map(|param_name| {
+                    command_cmd
+                        .get_one::<String>(param_name)
+                        .unwrap_or(&String::new())
+                        .to_owned()
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            println!("Selected command args: {:?}", ordered_params);
+
+            call(
+                endpoint,
+                selected_api,
+                ordered_params,
+                insecure,
+                key,
+                secret,
+            )?;
+        }
+    }
 
     Ok(())
 }
