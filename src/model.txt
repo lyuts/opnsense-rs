@@ -1,3 +1,27 @@
+POST auth group add
+POST auth group del $uuid
+GET auth group get $uuid=null
+GET auth group get
+* auth group search
+POST auth group set $uuid=null
+POST auth group set
+
+GET auth priv get
+GET auth priv getItem $id
+GET auth priv search
+POST auth priv set
+POST auth priv setItem $id
+
+POST auth user add
+POST auth user addApiKey $username
+POST auth user del $uuid
+POST auth user delApiKey $id
+GET auth user get $uuid=null
+GET auth user newOtpSeed
+* auth user search
+GET auth user searchApiKey
+POST auth user set $uuid=null
+
 GET core backup backups $host
 GET core backup deleteBackup $backup
 GET core backup diff $host,$backup1,$backup2

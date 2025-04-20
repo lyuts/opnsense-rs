@@ -21,19 +21,29 @@ fn call(
         endpoint, api.module, api.controller, api.command
     );
 
-    for p in params {
+    for p in &params {
         url.push_str(&format!("/{}", p));
     }
 
     println!("url: {}", url);
-    let resp = reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(insecure)
-        .build()?
-        .request(method, url)
-        .basic_auth(key, Some(secret))
-        // .json(&json!({}))
-        .send()?
-        .text()?;
+    let resp = if params.is_empty() {
+        reqwest::blocking::Client::builder()
+            .danger_accept_invalid_certs(insecure)
+            .build()?
+            .request(method, url)
+            .basic_auth(key, Some(secret))
+            .send()?
+            .text()?
+    } else {
+        reqwest::blocking::Client::builder()
+            .danger_accept_invalid_certs(insecure)
+            .build()?
+            .request(method, url)
+            .basic_auth(key, Some(secret))
+            .json(&serde_json::json!({}))
+            .send()?
+            .text()?
+    };
 
     println!("==>>> {:?}", resp);
     Ok(())
