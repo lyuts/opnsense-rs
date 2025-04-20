@@ -5,7 +5,6 @@ use clap::Arg;
 use clap::ArgAction;
 use clap::Command;
 use model::{get_apis, Api};
-use serde_json::json;
 use std::collections::HashMap;
 
 fn call(

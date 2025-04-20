@@ -1,5 +1,11 @@
 use nom::{
-    branch::alt, bytes::complete::tag, character::complete::{alpha1, alphanumeric1, char, one_of, space0, space1}, combinator::{map, opt, recognize}, multi::{many0_count, many1, separated_list0}, sequence::{pair, preceded}, IResult, Parser
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{alpha1, alphanumeric1, char, space1},
+    combinator::{map, opt, recognize},
+    multi::{many0_count, separated_list0},
+    sequence::{pair, preceded},
+    IResult, Parser,
 };
 
 #[derive(Clone, Debug)]
@@ -28,12 +34,11 @@ fn parameters(input: &str) -> IResult<&str, Vec<&str>> {
 }
 
 fn identifier(input: &str) -> IResult<&str, &str> {
-    recognize(
-    pair(
-      alt((alpha1, tag("_"))),
-      many0_count(alt((alphanumeric1, tag("_"))))
-    )
-  ).parse(input)
+    recognize(pair(
+        alt((alpha1, tag("_"))),
+        many0_count(alt((alphanumeric1, tag("_")))),
+    ))
+    .parse(input)
 }
 
 fn api_model(input: &str) -> IResult<&str, Api> {
