@@ -1,9 +1,5 @@
 use nom::{
-    character::complete::{alpha1, alphanumeric1, char, space0},
-    combinator::{map, opt},
-    multi::separated_list0,
-    sequence::preceded,
-    IResult, Parser,
+    branch::alt, bytes::complete::tag, character::complete::{alpha1, alphanumeric1, char, one_of, space0, space1}, combinator::{map, opt, recognize}, multi::{many0_count, many1, separated_list0}, sequence::{pair, preceded}, IResult, Parser
 };
 
 #[derive(Clone, Debug)]
@@ -19,7 +15,7 @@ fn parameter(input: &str) -> IResult<&str, &str> {
     map(
         (
             char::<&str, nom::error::Error<&str>>('$'),
-            alphanumeric1,
+            identifier,
             opt(preceded(char('='), alphanumeric1)),
         ),
         |(_, p, _)| p.trim(),
@@ -31,17 +27,26 @@ fn parameters(input: &str) -> IResult<&str, Vec<&str>> {
     separated_list0(char(','), parameter).parse(input)
 }
 
+fn identifier(input: &str) -> IResult<&str, &str> {
+    recognize(
+    pair(
+      alt((alpha1, tag("_"))),
+      many0_count(alt((alphanumeric1, tag("_"))))
+    )
+  ).parse(input)
+}
+
 fn api_model(input: &str) -> IResult<&str, Api> {
     map(
         (
-            alpha1,
-            space0,
-            alpha1,
-            space0,
-            alpha1,
-            space0,
-            alpha1,
-            opt(space0),
+            alt((alphanumeric1, tag("*"))),
+            space1,
+            identifier,
+            space1,
+            identifier,
+            space1,
+            identifier,
+            opt(space1),
             opt(parameters),
         ),
         |(method, _, module, _, controller, _, command, _, parameters)| Api {
@@ -65,7 +70,7 @@ pub fn get_apis() -> anyhow::Result<Vec<Api>> {
     Ok(model_content
         .split('\n')
         .filter(|l| !l.trim().is_empty())
-        .map(|l| api_model(l).inspect_err(|e| eprintln!("Failed to parse line: {}", e)))
+        .map(|l| api_model(l).inspect_err(|e| eprintln!("Failed to parse line [{}]: {}", l, e)))
         .map(|r| r.unwrap().1)
         .collect::<Vec<Api>>())
 }

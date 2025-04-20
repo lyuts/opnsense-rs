@@ -11,3 +11,45 @@ GET core dashboard productInfoFeed
 POST core dashboard restoreDefaults
 POST core dashboard saveWidgets
 
+GET core hasync get
+POST core hasync reconfigure
+POST core hasync set
+
+GET core hasync_status remoteService $action,$service,$service_id
+POST core hasync_status restart $service=null,$service_id=null
+POST core hasync_status restartAll $service=null,$service_id=null
+GET core hasync_status services
+POST core hasync_status start $service=null,$service_id=null
+POST core hasync_status stop $service=null,$service_id=null
+GET core hasync_status version
+
+GET core menu search
+GET core menu tree
+
+POST core service restart $name,$id=’’
+GET core service search
+POST core service start $name,$id=’’
+POST core service stop $name,$id=’’
+
+POST core snapshots activate $uuid
+POST core snapshots add
+POST core snapshots del $uuid
+GET core snapshots get $uuid=null
+GET core snapshots isSupported
+GET core snapshots search
+POST core snapshots set $uuid
+
+POST core system dismissStatus
+POST core system halt
+POST core system reboot
+GET core system status
+
+POST core tunables addItem
+POST core tunables delItem $uuid
+GET core tunables get
+GET core tunables getItem $uuid=null
+POST core tunables reconfigure
+POST core tunables reset
+* core tunables searchItem
+POST core tunables set
+POST core tunables setItem $uuid
