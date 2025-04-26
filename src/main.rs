@@ -69,7 +69,7 @@ fn call(
     }
 
     println!("url: {}", url);
-    let resp = if params.is_empty() {
+    let resp = if params.is_empty() && method == reqwest::Method::GET {
         reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(insecure)
             .build()?
