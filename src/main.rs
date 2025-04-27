@@ -71,8 +71,11 @@ fn call(
         url.push_str(&format!("/{}", p));
     }
 
+    debug!("api: {:?}", api);
     debug!("url: {}", url);
-    let resp = if params.is_empty() && method == reqwest::Method::GET {
+    let has_required_params = api.parameters.iter().map(|p| p.1).any(|required| required);
+    let resp = if !has_required_params && method == reqwest::Method::GET {
+        debug!("sending request without body");
         reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(insecure)
             .build()?
@@ -81,6 +84,7 @@ fn call(
             .send()?
             .text()?
     } else {
+        debug!("sending request with body");
         reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(insecure)
             .build()?
@@ -148,7 +152,11 @@ fn main() -> anyhow::Result<()> {
                     .arg(Arg::new("body").short('b').long("body").default_value("{}"))
                     .display_order(0);
                 for param in &api.parameters {
-                    cmd = cmd.arg(Arg::new(param).long(param))
+                    cmd = cmd.arg(
+                        Arg::new(param.0.clone())
+                            .long(param.0.clone())
+                            .required(param.1),
+                    )
                 }
                 controller_cmd = controller_cmd.subcommand(cmd);
             }
@@ -190,7 +198,7 @@ fn main() -> anyhow::Result<()> {
                     module: "auth".to_owned(),
                     controller: "user".to_owned(),
                     command: "addApiKey".to_owned(),
-                    parameters: vec!["username".to_owned()],
+                    parameters: vec![("username".to_owned(), true)],
                 },
                 vec![user.to_owned()],
                 insecure,
@@ -260,7 +268,7 @@ fn main() -> anyhow::Result<()> {
                             module: "auth".to_owned(),
                             controller: "user".to_owned(),
                             command: "delApiKey".to_owned(),
-                            parameters: vec!["id".to_owned()],
+                            parameters: vec![("id".to_owned(), true)],
                         },
                         vec![row.id.clone()],
                         insecure,
@@ -292,7 +300,7 @@ fn main() -> anyhow::Result<()> {
             let ordered_params: Vec<String> = selected_api
                 .parameters
                 .iter()
-                .map(|param_name| {
+                .map(|(param_name, is_required)| {
                     command_cmd
                         .get_one::<String>(param_name)
                         .unwrap_or(&String::new())

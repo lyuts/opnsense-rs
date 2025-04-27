@@ -14,22 +14,23 @@ pub struct Api {
     pub module: String,
     pub controller: String,
     pub command: String,
-    pub parameters: Vec<String>,
+    /// parameter + reguireq?
+    pub parameters: Vec<(String, bool)>,
 }
 
-fn parameter(input: &str) -> IResult<&str, &str> {
+fn parameter(input: &str) -> IResult<&str, (&str, bool)> {
     map(
         (
             char::<&str, nom::error::Error<&str>>('$'),
             identifier,
             opt(preceded(char('='), alphanumeric1)),
         ),
-        |(_, p, _)| p.trim(),
+        |(_, p, x)| (p.trim(), x.is_none()),
     )
     .parse(input)
 }
 
-fn parameters(input: &str) -> IResult<&str, Vec<&str>> {
+fn parameters(input: &str) -> IResult<&str, Vec<(&str, bool)>> {
     separated_list0(char(','), parameter).parse(input)
 }
 
@@ -62,7 +63,7 @@ fn api_model(input: &str) -> IResult<&str, Api> {
             parameters: parameters
                 .unwrap_or_default()
                 .iter()
-                .map(ToString::to_string)
+                .map(|(s, f)| (s.to_string(), *f))
                 .collect(),
         },
     )
