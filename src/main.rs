@@ -142,7 +142,8 @@ fn main() -> anyhow::Result<()> {
         for (controller_name, cmds) in controller_cmds.iter() {
             let mut controller_cmd = Command::new(controller_name);
             for api in cmds {
-                let mut cmd = Command::new(api.command.clone());
+                let mut cmd = Command::new(api.command.clone())
+                    .arg(Arg::new("body").short('b').long("body").default_value("{}"));
                 for param in &api.parameters {
                     cmd = cmd.arg(Arg::new(param).long(param))
                 }
