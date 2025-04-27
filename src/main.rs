@@ -87,8 +87,6 @@ fn call(
             .send()?
             .text()?
     };
-
-    println!("==>>> {:?}", resp);
     Ok(resp)
 }
 
@@ -286,7 +284,7 @@ fn main() -> anyhow::Result<()> {
 
             println!("Selected command args: {:?}", ordered_params);
 
-            call(
+            let resp = call(
                 endpoint,
                 selected_api,
                 ordered_params,
@@ -294,6 +292,7 @@ fn main() -> anyhow::Result<()> {
                 key,
                 secret,
             )?;
+            println!("{resp}");
         }
     }
 
