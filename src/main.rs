@@ -9,6 +9,9 @@ use clap::Command;
 use model::{get_apis, Api};
 use serde::Deserialize;
 use std::collections::HashMap;
+use tracing::debug;
+use tracing::trace;
+use tracing::Level;
 
 const CONFIG_FILE: &str = ".opn.cfg";
 
@@ -68,7 +71,7 @@ fn call(
         url.push_str(&format!("/{}", p));
     }
 
-    println!("url: {}", url);
+    debug!("url: {}", url);
     let resp = if params.is_empty() && method == reqwest::Method::GET {
         reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(insecure)
@@ -106,6 +109,7 @@ fn main() -> anyhow::Result<()> {
     let apis: Vec<Api> = get_apis()?;
 
     let mut args = Command::new("opnsense cli")
+        .arg(Arg::new("verbose").short('v').action(ArgAction::Count))
         .arg(
             Arg::new("insecure")
                 .short('k')
@@ -136,12 +140,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     for (module_name, controller_cmds) in x.iter() {
-        let mut module_cmd = Command::new(module_name);
+        let mut module_cmd = Command::new(module_name).display_order(0);
         for (controller_name, cmds) in controller_cmds.iter() {
-            let mut controller_cmd = Command::new(controller_name);
+            let mut controller_cmd = Command::new(controller_name).display_order(0);
             for api in cmds {
                 let mut cmd = Command::new(api.command.clone())
-                    .arg(Arg::new("body").short('b').long("body").default_value("{}"));
+                    .arg(Arg::new("body").short('b').long("body").default_value("{}"))
+                    .display_order(0);
                 for param in &api.parameters {
                     cmd = cmd.arg(Arg::new(param).long(param))
                 }
@@ -154,16 +159,30 @@ fn main() -> anyhow::Result<()> {
 
     let matches = args.get_matches();
     let insecure = *matches.get_one::<bool>("insecure").unwrap_or(&false);
+    let verbosity_level = match matches.get_count("verbose") {
+        0 => Level::WARN,
+        1 => Level::INFO,
+        _ => Level::DEBUG,
+    };
+
+    tracing_subscriber::fmt()
+        .with_file(true)
+        .with_level(true)
+        .with_line_number(true)
+        .with_max_level(verbosity_level)
+        .with_target(false)
+        .with_thread_names(true)
+        .init();
 
     let (module_name, module_cmd) = matches.subcommand().context("Must specify module.")?;
-    println!("Selected module: {}", module_name);
+    debug!("Selected module: {}", module_name);
     match module_name {
         "login" => {
             let user = rpassword::prompt_password("User:")?;
             let pass = rpassword::prompt_password("Password:")?;
-            println!("[{}]", user);
+            trace!("[{}]", user);
 
-            println!("Logging in...");
+            debug!("Logging in...");
             let response = call(
                 endpoint,
                 &Api {
@@ -179,7 +198,7 @@ fn main() -> anyhow::Result<()> {
                 &pass,
             )?;
 
-            println!("Checking response...");
+            trace!("Checking response...");
 
             match serde_json::from_str::<AddApiKeyResponse>(&response)? {
                 AddApiKeyResponse::Success {
@@ -204,7 +223,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         "logout" => {
-            println!("Discovering key id...");
+            trace!("Discovering key id...");
 
             let response = call(
                 endpoint,
@@ -255,11 +274,11 @@ fn main() -> anyhow::Result<()> {
         _ => {
             let (controller_name, controller_cmd) =
                 module_cmd.subcommand().context("Must specify controller")?;
-            println!("Selected controller: {}", controller_name);
+            debug!("Selected controller: {}", controller_name);
             let (command_name, command_cmd) = controller_cmd
                 .subcommand()
                 .context("Must specify command")?;
-            println!("Selected command: {}", command_name);
+            debug!("Selected command: {}", command_name);
 
             let selected_api = apis
                 .iter()
@@ -282,7 +301,7 @@ fn main() -> anyhow::Result<()> {
                 .filter(|s| !s.is_empty())
                 .collect();
 
-            println!("Selected command args: {:?}", ordered_params);
+            debug!("Selected command args: {:?}", ordered_params);
 
             let resp = call(
                 endpoint,
