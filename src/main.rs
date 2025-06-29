@@ -20,6 +20,7 @@ const CONFIG_FILE: &str = ".opn.cfg";
 enum AddApiKeyResponse {
     Success {
         result: String,
+        #[allow(dead_code)]
         hostname: String,
         key: String,
         secret: String,
@@ -35,19 +36,25 @@ enum AddApiKeyResponse {
 enum SearchApiKeyResponse {
     #[serde(rename_all = "camelCase")]
     Success {
+        #[allow(dead_code)]
         total: u16,
+        #[allow(dead_code)]
         row_count: u16,
+        #[allow(dead_code)]
         current: u16,
         rows: Vec<ApiKeyRow>,
     },
     Failure {
+        #[allow(dead_code)]
         status: u16,
+        #[allow(dead_code)]
         message: String,
     },
 }
 
 #[derive(Debug, Deserialize)]
 struct ApiKeyRow {
+    #[allow(dead_code)]
     username: String,
     key: String,
     id: String,
@@ -68,12 +75,12 @@ fn call(
     );
 
     for p in &params {
-        url.push_str(&format!("/{}", p));
+        url.push_str(&format!("/{p}"));
     }
 
     debug!("api: {:?}", api);
     debug!("url: {}", url);
-    let has_required_params = api.parameters.iter().map(|p| p.1).any(|required| required);
+    let has_required_params = api.parameters.iter().any(|p| p.1);
     let resp = if !has_required_params && method == reqwest::Method::GET {
         debug!("sending request without body");
         reqwest::blocking::Client::builder()
@@ -252,9 +259,9 @@ fn main() -> anyhow::Result<()> {
                 .context("Failed to parse")?
             {
                 SearchApiKeyResponse::Success {
-                    total,
-                    row_count,
-                    current,
+                    total: _,
+                    row_count: _,
+                    current: _,
                     rows,
                 } => {
                     let row = rows
@@ -300,7 +307,7 @@ fn main() -> anyhow::Result<()> {
             let ordered_params: Vec<String> = selected_api
                 .parameters
                 .iter()
-                .map(|(param_name, is_required)| {
+                .map(|(param_name, _is_required)| {
                     command_cmd
                         .get_one::<String>(param_name)
                         .unwrap_or(&String::new())

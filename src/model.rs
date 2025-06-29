@@ -76,7 +76,7 @@ pub fn get_apis() -> anyhow::Result<Vec<Api>> {
     Ok(model_content
         .split('\n')
         .filter(|l| !l.trim().is_empty())
-        .map(|l| api_model(l).inspect_err(|e| eprintln!("Failed to parse line [{}]: {}", l, e)))
+        .map(|l| api_model(l).inspect_err(|e| eprintln!("Failed to parse line [{l}]: {e}")))
         .map(|r| r.unwrap().1)
         .collect::<Vec<Api>>())
 }
